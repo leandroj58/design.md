@@ -1,180 +1,199 @@
 # Plan: App interna de notas (inspirada en minimal.app) con integración MCP para Claude
 
-**Fecha:** 2026-07-09
-**Objetivo:** Construir una webapp de notas de uso interno, accesible desde el navegador, replicando las funcionalidades clave de Minimal (minimal.app) y conectable a Claude mediante un servidor MCP.
+**Fecha:** 2026-07-09 (v2 — ajustado a Supabase + Railway, sin colaboración)
+**Objetivo:** Webapp de notas de uso interno, accesible desde el navegador, con escritura markdown estilo Notion (los estilos se aplican mientras escribís), archivado automático tipo Minimal, botón "Copiar .md" para compartir, y un servidor MCP para conectar con Claude.
 
 ---
 
 ## 1. Análisis de minimal.app
 
-Minimal ("Minimal | Writing + Notes", de Arthur Van Siclen) es una app de escritura y notas de diseño minimalista, "inspirada en la meditación", disponible para iPhone, iPad, Mac y Apple Watch. Es una app nativa de Apple (no tiene versión web), con modelo de membresía (~USD 1.99/mes o 19.99/año, familiar 79.99/año, con prueba gratuita).
+Minimal ("Minimal | Writing + Notes", de Arthur Van Siclen) es una app de escritura y notas de diseño minimalista, disponible solo para iPhone, iPad, Mac y Apple Watch (no tiene versión web), con modelo de membresía.
 
-### Inventario de features
+### Inventario de features de Minimal
 
-| # | Feature | Descripción |
-|---|---------|-------------|
-| 1 | **Note Lifetime** (feature insignia) | Las notas que no se editan durante un tiempo se **archivan automáticamente**. El cuaderno activo siempre refleja "el momento presente": queda fresco y ordenado sin esfuerzo manual. Lo archivado no se pierde, se puede recuperar. |
-| 2 | **Formato estilo Markdown** | Formateo en vivo mientras se escribe usando caracteres especiales (títulos, negrita, listas, etc.). "Beautiful formatting" con tipografía cuidada. |
-| 3 | **Todos** | Checkboxes/tareas dentro de las notas. |
-| 4 | **Todos → Calendario** | Cada todo puede sincronizarse con el calendario de Apple como evento propio, con hora de inicio/fin y alertas. |
-| 5 | **Notas colaborativas** | Compartir notas con permisos de **solo lectura** o **lectura + edición**. Sincronización automática entre participantes con soporte offline completo. |
-| 6 | **Publicar como sitio web** | Convertir una nota en una página web pública "en tres taps": se escribe el texto y se publica como sitio simple y estético. |
-| 7 | **Sync multiplataforma** | Sincronización en la nube entre Mac, iPhone, iPad y Apple Watch, offline-first. |
-| 8 | **Compartir** | Compartir por iMessage y enviar como email. |
-| 9 | **Diseño sustractivo / sin distracciones** | UI extremadamente reducida: una lista de notas + editor, sin carpetas complejas ni menús cargados. El foco es escribir. |
-| 10 | **Archivo consultable** | Las notas archivadas (manual o automáticamente por Lifetime) siguen disponibles y buscables. |
-| 11 | **Membresía** | Las mejores features (colaboración, publicación, sync) son de pago. *(No aplica a nuestra versión interna.)* |
+| # | Feature | Descripción | ¿La adoptamos? |
+|---|---------|-------------|----------------|
+| 1 | **Note Lifetime** (insignia) | Las notas sin editar durante un tiempo se **archivan automáticamente**; el cuaderno activo siempre queda limpio. Lo archivado no se pierde. | ✅ Sí |
+| 2 | **Formato Markdown en vivo** | Formateo mientras se escribe usando caracteres especiales. | ✅ Sí — es la prioridad #1, estilo Notion |
+| 3 | **Todos** | Checkboxes/tareas dentro de las notas. | ✅ Sí |
+| 4 | **Todos → Calendario Apple** | Cada todo se sincroniza como evento con alertas. | ❌ No (fuera de alcance) |
+| 5 | **Notas colaborativas** | Compartir con permisos lectura/edición, sync en tiempo real. | ❌ No — se reemplaza por **botón "Copiar .md"** |
+| 6 | **Publicar como sitio web** | Convertir nota en página pública. | ❌ No — el copy del .md cubre la necesidad |
+| 7 | **Sync multiplataforma** | Nube entre dispositivos Apple, offline-first. | ✅ Implícito (es web: estado en servidor) |
+| 8 | **Compartir iMessage/email** | Compartir nativo de Apple. | ❌ No — copiar y pegar donde sea |
+| 9 | **Diseño sin distracciones** | Lista de notas + editor, sin carpetas ni menús. | ✅ Sí — principio rector |
+| 10 | **Archivo consultable** | Notas archivadas disponibles y buscables. | ✅ Sí |
+| 11 | **Membresía de pago** | Features premium. | ❌ No aplica (uso interno) |
 
-**Fuentes:** [minimal.app](https://minimal.app/), [App Store — Minimal | Notes](https://apps.apple.com/us/app/minimal-notes/id1442727443), [blog.minimal.app](https://blog.minimal.app/about/), [Building Minimal Notes (Medium)](https://medium.com/minimal-notes/building-minimal-notes-7cd3334df899), [Building Collaborative Notes (Medium)](https://medium.com/minimal-notes/building-collaborative-notes-a2fcc57074de).
-
-### Qué la hace distinta (y qué conviene copiar)
-
-- **El archivado automático (Note Lifetime) es el diferenciador.** Es barato de implementar (un job periódico) y de alto valor para uso interno: el espacio de trabajo nunca se llena de notas muertas.
-- **La simplicidad es la feature.** Sin carpetas, sin tags obligatorios, sin configuración: lista de notas activas + editor + archivo.
-- **Publicar como página** se traduce muy bien a un contexto interno: compartir una nota como URL de solo lectura dentro de la organización.
+**Fuentes:** [minimal.app](https://minimal.app/), [App Store](https://apps.apple.com/us/app/minimal-notes/id1442727443), [blog.minimal.app](https://blog.minimal.app/about/), [Building Minimal Notes](https://medium.com/minimal-notes/building-minimal-notes-7cd3334df899).
 
 ---
 
-## 2. Alcance de nuestra app interna
+## 2. Alcance
 
-**Es:** una webapp (navegador, desktop y mobile-responsive) para el equipo, con login interno, notas markdown con lifetime automático, todos, compartir/publicar internamente, y un servidor MCP para que Claude pueda leer y escribir notas.
+**Es:** una webapp de una sola persona por nota (sin colaboración), centrada en:
 
-**No es (por ahora):** apps nativas, Apple Watch, facturación/membresías, sync con Apple Calendar (se reemplaza por export iCal/integración calendario propio en fase posterior).
+1. **Escritura limpia estilo Notion:** escribís markdown (`#`, `**`, `-`, `[]`, `` ` ``) y los estilos aparecen al instante; nunca ves el markdown crudo, pero el documento *es* markdown por debajo.
+2. **Note Lifetime:** archivado automático de notas inactivas.
+3. **Botón "Copiar .md":** un clic copia el markdown completo de la nota al portapapeles para pegarlo donde quieras (Slack, email, Claude, otro editor).
+4. **MCP:** Claude puede buscar, leer, crear y editar tus notas.
 
-### Mapeo de features Minimal → versión interna
-
-| Feature Minimal | Versión interna | Fase |
-|---|---|---|
-| Note Lifetime | Job diario que archiva notas sin editar hace N días (configurable por usuario, default 30; aviso visual de "días de vida restantes" en cada nota) | 1 |
-| Formato Markdown en vivo | Editor WYSIWYG-markdown (TipTap) con atajos `#`, `**`, `-`, `[]` | 1 |
-| Todos | Checkboxes en notas + vista agregada "Mis todos" de todas las notas | 1 |
-| Todos → Calendario | Export iCal (.ics) por usuario / feed suscribible | 3 |
-| Notas colaborativas | Compartir con usuarios internos: lectura o edición. Edición colaborativa en tiempo real (Yjs) | 2 |
-| Publicar como sitio web | "Publicar" genera URL interna de solo lectura, con render limpio; opcional token público | 2 |
-| Sync multiplataforma | Es web: estado en servidor. PWA + soporte offline básico (fase 3) | 1/3 |
-| Compartir iMessage/email | Copiar link + enviar por email | 2 |
-| Diseño sin distracciones | UI de dos paneles (lista + editor), tema claro/oscuro, cero configuración inicial | 1 |
-| Archivo | Vista "Archivo" con búsqueda full-text y restauración | 1 |
-| — | **Servidor MCP para Claude** (nuevo, no existe en Minimal) | 1 |
+**No es:** colaboración en tiempo real, permisos compartidos, publicación como sitio, apps nativas, calendario.
 
 ---
 
-## 3. Arquitectura propuesta
+## 3. Arquitectura: Supabase + Railway
 
 ```
-┌─────────────┐     HTTPS      ┌──────────────────────────────┐
-│  Navegador  │ ─────────────▶ │  Next.js (App Router)        │
-│  (React UI) │                │  ├─ UI (React + TipTap)      │
-└─────────────┘                │  ├─ API interna (route hdlrs)│
-                               │  └─ /mcp  ← MCP Streamable   │
-┌─────────────┐   Streamable   │          HTTP endpoint       │
-│ Claude      │ ─────HTTP────▶ │                              │
-│ (Code/      │                └───────────┬──────────────────┘
-│  Desktop/   │                            │
-│  claude.ai) │                ┌───────────▼──────────┐   ┌──────────────┐
-└─────────────┘                │ PostgreSQL (+ FTS)   │   │ Cron diario  │
-                               └──────────────────────┘   │ (lifetime)   │
-                                                          └──────────────┘
+┌─────────────┐    HTTPS    ┌─────────────────────────────────┐
+│  Navegador  │ ──────────▶ │  Railway: Next.js (Docker)      │
+│  React UI   │             │  ├─ UI (React + TipTap)         │
+└─────────────┘             │  ├─ API (route handlers)        │
+                            │  └─ /mcp (Streamable HTTP)      │
+┌─────────────┐             └────────────┬────────────────────┘
+│ Claude Code │  Streamable              │ supabase-js / Postgres
+│ Claude.ai   │ ────HTTP───▶ /mcp        ▼
+│ Desktop     │             ┌─────────────────────────────────┐
+└─────────────┘             │  Supabase                       │
+                            │  ├─ Postgres (+ FTS + RLS)      │
+                            │  ├─ Auth (magic link / Google)  │
+                            │  └─ pg_cron (Note Lifetime)     │
+                            └─────────────────────────────────┘
 ```
 
-### Stack
+### Reparto de responsabilidades
 
-- **Frontend + backend:** **Next.js 15 + TypeScript** (una sola app desplegable; API via route handlers). Alternativa si se prefiere separar: React/Vite + Fastify.
-- **Editor:** **TipTap** (ProseMirror) con extensión de markdown shortcuts y task lists. Preparado para colaboración con Yjs en fase 2.
-- **Base de datos:** **PostgreSQL** con `tsvector` para búsqueda full-text (español). Prisma o Drizzle como ORM.
-- **Auth:** email interno + magic link, o SSO de la organización (Google Workspace) vía Auth.js. Sesiones con cookies httpOnly.
-- **Note Lifetime:** cron diario (Vercel Cron / node-cron / systemd timer) que mueve a `archived` las notas con `updated_at < now() - lifetime_days`.
-- **Tiempo real (fase 2):** Yjs + y-websocket (o PartyKit/Liveblocks si se prefiere gestionado).
-- **MCP:** **`@modelcontextprotocol/sdk`** (TypeScript) expuesto como **Streamable HTTP** en `/mcp`.
-- **Deploy:** Docker Compose en servidor interno, o Vercel + Postgres gestionado. HTTPS obligatorio (requisito para conectores MCP remotos).
+**Supabase:**
+- **Postgres** con full-text search (`tsvector`, config `spanish`) y **Row Level Security** (cada usuario solo ve sus notas).
+- **Supabase Auth:** magic link por email o Google OAuth. La UI usa `@supabase/ssr` para sesiones con cookies.
+- **pg_cron + función SQL** para el Note Lifetime: un job diario dentro de la propia base archiva las notas vencidas — no hace falta ningún worker externo:
+  ```sql
+  select cron.schedule('note-lifetime', '0 6 * * *', $$
+    update notes set status = 'archived', archived_at = now()
+    where status = 'active'
+      and updated_at < now() - (lifetime_days || ' days')::interval
+  $$);
+  ```
 
-### Modelo de datos
+**Railway:**
+- Un único servicio: la app **Next.js** (UI + API + endpoint MCP) desplegada desde el repo (Dockerfile o Nixpacks), con dominio propio y HTTPS automático — requisito para conectar el MCP a claude.ai.
+- Variables de entorno: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (solo para el MCP server-side), `MCP_TOKEN_SECRET`.
 
+### Stack de la app
+
+- **Next.js 15 + TypeScript**, App Router.
+- **Editor: TipTap** (ProseMirror) — es exactamente el motor de experiencia "tipo Notion":
+  - *Input rules* de markdown: `# ` → H1, `- ` → lista, `[] ` → checkbox, `**x**` → negrita, `` ` `` → código, `> ` → cita, `---` → divisor.
+  - Extensiones: StarterKit + TaskList/TaskItem + Placeholder + Typography.
+  - Serialización bidireccional a markdown (`tiptap-markdown`): el estado canónico que se guarda en Supabase es **markdown**, lo que hace triviales el botón "Copiar .md" y las tools MCP.
+  - Opcional para el toque Notion: menú `/` (slash commands) con la extensión Suggestion.
+- **UI:** dos paneles (lista de notas | editor), tema claro/oscuro, tipografía cuidada, cero configuración. Indicador sutil de "vida restante" por nota.
+- **Copiar .md:** botón en el editor → `navigator.clipboard.writeText(markdown)` + toast. También copia por nota desde la lista.
+
+### Modelo de datos (Supabase)
+
+```sql
+-- auth.users la provee Supabase Auth
+
+create table notes (
+  id            uuid primary key default gen_random_uuid(),
+  owner_id      uuid not null references auth.users(id),
+  content_md    text not null default '',            -- fuente de verdad
+  title         text generated always as (split_part(content_md, E'\n', 1)) stored,
+  status        text not null default 'active',      -- active | archived
+  lifetime_days int  not null default 30,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now(),
+  archived_at   timestamptz,
+  search_tsv    tsvector generated always as (to_tsvector('spanish', content_md)) stored
+);
+create index on notes using gin(search_tsv);
+
+create table todos (              -- materializados desde content_md al guardar
+  id        uuid primary key default gen_random_uuid(),
+  note_id   uuid not null references notes(id) on delete cascade,
+  owner_id  uuid not null references auth.users(id),
+  position  int  not null,
+  text      text not null,
+  done      boolean not null default false,
+  done_at   timestamptz
+);
+
+create table api_tokens (         -- para el MCP
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references auth.users(id),
+  name         text not null,
+  token_hash   text not null,
+  created_at   timestamptz not null default now(),
+  last_used_at timestamptz
+);
+
+-- RLS en las tres tablas: owner_id = auth.uid()
 ```
-users(id, email, name, created_at)
-notes(id, owner_id, title, content_md, content_json, status[active|archived|deleted],
-      lifetime_days, published_slug nullable, publish_public bool,
-      created_at, updated_at, archived_at, search_tsv)
-note_shares(note_id, user_id, role[viewer|editor], created_at)
-todos(id, note_id, position, text, done, due_at nullable, done_at)   -- derivados del contenido o tabla propia
-api_tokens(id, user_id, name, token_hash, scopes, last_used_at)      -- para MCP
-```
 
-Notas de diseño:
-- `title` = primera línea de la nota (como Minimal: sin campo separado).
-- Los todos se extraen del documento (nodos taskItem de TipTap) y se materializan en la tabla `todos` al guardar, para poder consultarlos de forma agregada y desde MCP.
-- `archived` ≠ `deleted`: el archivo se conserva y se busca; borrar es explícito.
+Notas:
+- `title` = primera línea del markdown (como Minimal, sin campo aparte).
+- Al guardar una nota, la API re-extrae los checkboxes (`- [ ]` / `- [x]`) y sincroniza la tabla `todos`, para la vista agregada "Mis todos" y para las tools MCP. Marcar un todo desde MCP reescribe la línea correspondiente en `content_md`.
 
 ---
 
 ## 4. Integración MCP con Claude
 
-Un **servidor MCP remoto (Streamable HTTP)** montado en la misma app en `/mcp`, de modo que se pueda conectar desde:
+**Servidor MCP remoto (Streamable HTTP)** en `/mcp`, dentro de la misma app Next.js en Railway, con `@modelcontextprotocol/sdk` (o `mcp-handler`, el adaptador para Next.js).
 
-- **Claude Code:** `claude mcp add --transport http notas https://notas.interna.tld/mcp`
-- **Claude Desktop / claude.ai:** como *custom connector* (Settings → Connectors → Add custom connector).
+### Conexión
+
+- **Claude Code:** `claude mcp add --transport http notas https://notas.up.railway.app/mcp --header "Authorization: Bearer <token>"`
+- **Claude Desktop / claude.ai:** custom connector apuntando a la misma URL (Railway ya da HTTPS).
 
 ### Autenticación
 
-- **Fase 1 (simple):** tokens API personales (bearer) generados desde la UI (`api_tokens`), pasados como header. Suficiente para Claude Code y uso interno.
-- **Fase 2 (correcto para claude.ai):** OAuth 2.1 con el flujo de autorización que soportan los conectores remotos de Claude (el SDK de MCP trae soporte de auth). Cada usuario conecta su propia cuenta, y el servidor MCP opera con sus permisos.
+- **Fase 1:** tokens personales (bearer) generados desde la UI (tabla `api_tokens`, se guarda solo el hash). El MCP resuelve el token → `user_id` y usa el service role de Supabase acotando cada query a ese usuario.
+- **Fase 2 (si se quiere usar desde claude.ai con OAuth):** OAuth 2.1 apoyado en Supabase Auth.
 
-### Herramientas (tools) expuestas
+### Tools
 
 | Tool | Descripción |
 |---|---|
-| `search_notes(query, include_archived?)` | Búsqueda full-text; devuelve id, título, snippet, estado |
-| `get_note(id)` | Contenido markdown completo + metadatos |
+| `search_notes(query, include_archived?)` | Full-text; devuelve id, título, snippet, estado |
+| `get_note(id)` | Markdown completo + metadatos |
 | `create_note(content_md)` | Crea nota (título = primera línea) |
-| `update_note(id, content_md | append)` | Edita o agrega al final |
+| `update_note(id, content_md)` / `append_to_note(id, text)` | Edición |
 | `archive_note(id)` / `restore_note(id)` | Gestión de archivo |
-| `list_todos(filter: open|done|all, due_before?)` | Todos agregados de todas las notas del usuario |
-| `complete_todo(id)` | Marca un todo como hecho |
-| `publish_note(id)` / `unpublish_note(id)` | Genera/revoca la URL de solo lectura |
-| `get_lifetime_report()` | Notas próximas a archivarse (útil para "¿qué está por vencer?") |
+| `list_todos(filter: open\|done\|all)` | Todos agregados de todas las notas |
+| `complete_todo(id)` | Marca hecho (actualiza el `- [ ]` en el markdown) |
+| `get_lifetime_report()` | Notas próximas a auto-archivarse |
 
-### Recursos y prompts MCP (opcional, fase 2)
-
-- **Resources:** `note://{id}` para que Claude pueda referenciar notas como contexto.
-- **Prompts:** plantillas tipo "resumí mis notas de esta semana", "convertí esta nota en minuta".
-
-### Casos de uso con Claude
+### Casos de uso
 
 - "Buscá en mis notas qué decidimos sobre X y resumílo."
 - "Creá una nota con la minuta de esta conversación."
-- "¿Qué todos tengo pendientes con vencimiento esta semana?"
-- "Archivá las notas del proyecto Y que ya cerramos."
+- "¿Qué todos tengo pendientes?"
+- "¿Qué notas están por archivarse esta semana?"
 
 ---
 
-## 5. Roadmap por fases
+## 5. Roadmap
 
-### Fase 1 — MVP (2–3 semanas de trabajo efectivo)
-1. Scaffold Next.js + Postgres + auth (magic link o Google SSO).
-2. CRUD de notas + editor TipTap con markdown shortcuts y task lists.
-3. Lista de notas activas / vista Archivo / búsqueda full-text.
-4. **Note Lifetime**: cron de archivado + indicador de vida en la UI + configuración por usuario.
-5. Vista agregada de todos.
-6. **Servidor MCP** en `/mcp` con tokens bearer y las tools básicas (`search`, `get`, `create`, `update`, `archive`, `list_todos`, `complete_todo`).
-7. Deploy interno con HTTPS + docs de conexión a Claude Code/Desktop.
+### Fase 1 — MVP (≈2 semanas)
+1. Proyecto Supabase: schema + RLS + Auth (magic link / Google).
+2. Next.js en Railway: login, lista de notas, editor TipTap con markdown en vivo (headings, listas, checkboxes, negrita/itálica, código, citas).
+3. Guardado con debounce (`content_md` como fuente de verdad) + sincronización de `todos`.
+4. **Botón "Copiar .md"** en editor y lista.
+5. **Note Lifetime** con pg_cron + indicador de vida en la UI + `lifetime_days` configurable por nota.
+6. Vista Archivo + búsqueda full-text + restaurar.
+7. **Servidor MCP** en `/mcp` con tokens bearer y todas las tools de la tabla. Página de ajustes para generar/revocar tokens, con las instrucciones de conexión a Claude.
 
-### Fase 2 — Colaboración y publicación (2–3 semanas)
-1. Compartir notas (viewer/editor) + página "Compartidas conmigo".
-2. Edición colaborativa en tiempo real (Yjs).
-3. Publicar como página interna de solo lectura (slug + render limpio); opción de link con token.
-4. OAuth 2.1 en el MCP para conectarlo como custom connector en claude.ai.
-5. Resources y prompts MCP.
-
-### Fase 3 — Pulido (1–2 semanas)
-1. PWA + offline básico (cache de notas recientes, cola de escritura).
-2. Export iCal de todos con fecha (equivalente al "Todos → Calendar" de Minimal).
-3. Notificación (email/Slack) previa al auto-archivado.
-4. Export/backup de todas las notas (markdown zip).
+### Fase 2 — Pulido (≈1 semana)
+1. Vista agregada "Mis todos".
+2. Slash commands (`/`) en el editor y paleta de comandos (Cmd+K: buscar/crear).
+3. Export completo (zip de .md) como backup.
+4. Aviso por email (Supabase/Resend) N días antes del auto-archivado.
+5. (Opcional) OAuth 2.1 para conectar el MCP como custom connector en claude.ai.
 
 ### Decisiones abiertas
-- **¿SSO Google o magic link?** (depende de qué use la organización)
-- **¿Vercel o servidor propio con Docker?** (si el MCP debe ser accesible desde claude.ai, necesita URL pública con HTTPS)
-- **¿Colaboración en tiempo real es requisito o alcanza con "último guardado gana" + lock suave?** (simplificaría mucho la fase 2)
+- **Magic link vs. Google OAuth** para el login (¿la organización usa Google Workspace?).
+- **Dominio:** ¿subdominio propio (`notas.tuempresa.com`) apuntando a Railway o el `*.up.railway.app`?
 
 ---
 
@@ -182,7 +201,7 @@ Un **servidor MCP remoto (Streamable HTTP)** montado en la misma app en `/mcp`, 
 
 | Riesgo | Mitigación |
 |---|---|
-| Auto-archivado archiva algo importante | Aviso visual + notificación previa + restauración en un clic; nunca borra |
-| Conflictos de edición concurrente (antes de Yjs) | Guardado optimista con detección de versión (`updated_at` check) y merge manual |
-| Seguridad del endpoint MCP | HTTPS, tokens con scopes, rate limiting, tools siempre acotadas al usuario autenticado |
-| Alcance crece (se vuelve "otro Notion") | Mantener el principio de Minimal: sin carpetas, sin tipos de bloque exóticos; el lifetime mantiene el orden |
+| Auto-archivado archiva algo importante | Indicador de vida + email previo + restauración en un clic; nunca borra |
+| Pérdida de fidelidad markdown ↔ editor | `content_md` es la fuente de verdad; test round-trip (md → TipTap → md) sobre el subset soportado |
+| Seguridad del endpoint MCP | HTTPS (Railway), tokens hasheados y revocables, rate limiting, queries siempre acotadas al dueño del token |
+| Alcance crece | Principio Minimal: sin carpetas, sin bloques exóticos; el lifetime mantiene el orden |
